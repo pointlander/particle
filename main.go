@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+	"math/big"
 	"math/rand"
+	"sort"
 
 	"github.com/gonum/plot"
 	"github.com/gonum/plot/plotter"
@@ -38,6 +40,42 @@ const (
 
 type Particle struct {
 	Mass, Size, X, Y, VX, VY float64
+}
+
+func (p *Particle) morton() (code [16]byte) {
+	state := [...]uint32{
+		fixed32(p.X), fixed32(p.Y),
+		fixed32(p.VX), fixed32(p.VY),
+	}
+	length := 8 * len(code)
+	for i := 0; i < length; i++ {
+		code[15-i/8] >>= 1
+		code[15-i/8] |= byte(state[i%4]&1) << 7
+		state[i%4] >>= 1
+	}
+	return
+}
+
+type Particles []Particle
+
+func (p Particles) Len() int {
+	return len(p)
+}
+
+func (p Particles) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
+}
+
+func (p Particles) Less(i, j int) bool {
+	a, b := big.Int{}, big.Int{}
+	ab, bb := p[i].morton(), p[j].morton()
+	a.SetBytes(ab[:])
+	b.SetBytes(bb[:])
+	return a.Cmp(&b) < 0
+}
+
+func fixed32(a float64) uint32 {
+	return uint32(a*65536 + 0.5)
 }
 
 func dot2D(x1, y1, x2, y2 float64) float64 {
@@ -206,7 +244,7 @@ func graphComplexity(complexity []int) {
 }
 
 func main() {
-	particles := make([]Particle, Num)
+	particles := make(Particles, Num)
 	complexity := make([]int, Steps)
 	velocity := computeV(Temp, Mass)
 	for i := range particles {
@@ -228,6 +266,7 @@ func main() {
 		binary.LittleEndian.PutUint64(bytes, bits)
 		in.Write(bytes)
 	}
+	_ = write
 	for s := 0; s < Steps; s++ {
 		for i := range particles {
 			a := &particles[i]
@@ -252,15 +291,28 @@ func main() {
 		}
 
 		in.Reset()
-		for _, particle := range particles {
-			write(particle.Mass)
+		sort.Sort(particles)
+		a := particles[0].morton()
+		last := big.Int{}
+		last.SetBytes(a[:])
+		for _, particle := range particles[1:] {
+			/*write(particle.Mass)
 			write(particle.Size)
 			write(particle.X)
-			write(particle.Y)
+			write(particle.Y)*/
 			//write(math.Sqrt(particle.VX*particle.VX + particle.VY*particle.VY))
 			//write(math.Atan2(particle.VY, particle.VX))
-			write(particle.VX)
-			write(particle.VY)
+			/*write(particle.VX)
+			write(particle.VY)*/
+			b := particle.morton()
+			current, diff := big.Int{}, big.Int{}
+			current.SetBytes(b[:])
+			diff.Sub(&current, &last)
+			if diff.Sign() < 0 {
+				panic("diff is negative")
+			}
+			in.Write(diff.Bytes())
+			last = current
 		}
 		out.Reset()
 		input := make(chan []byte, 1)
