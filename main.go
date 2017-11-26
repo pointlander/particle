@@ -12,11 +12,11 @@ import (
 	"math/rand"
 	"sort"
 
-	"github.com/gonum/plot"
-	"github.com/gonum/plot/plotter"
-	"github.com/gonum/plot/plotutil"
-	"github.com/gonum/plot/vg"
 	"github.com/pointlander/compress"
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/plotutil"
+	"gonum.org/v1/plot/vg"
 )
 
 const (
@@ -38,6 +38,7 @@ const (
 	KB = 1.380658e-16
 )
 
+// Particle is a particle with mass
 type Particle struct {
 	Mass, Size, X, Y, VX, VY float64
 }
@@ -56,6 +57,7 @@ func (p *Particle) morton() (code [16]byte) {
 	return
 }
 
+// Particles is a gas of particles
 type Particles []Particle
 
 func (p Particles) Len() int {
@@ -258,7 +260,7 @@ func main() {
 		particles[i].VY = velocity * math.Sin(theta)
 	}
 
-	dt := selectDt(&particles[0])
+	delta := selectDt(&particles[0])
 	in, out := &bytes.Buffer{}, &bytes.Buffer{}
 	write := func(n float64) {
 		bits := math.Float64bits(n)
@@ -283,8 +285,8 @@ func main() {
 					move(b, dt)
 				}
 			}
-			enforceWallsPeriodic(a, dt)
-			move(a, dt)
+			enforceWallsPeriodic(a, delta)
+			move(a, delta)
 		}
 		if s == 2000 {
 			graphVelocityDistribution(particles, "velocities_start.png")
