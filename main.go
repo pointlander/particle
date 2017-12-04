@@ -7,6 +7,8 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"flag"
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand"
@@ -142,10 +144,12 @@ func collision(a, b *Particle) {
 	coeff2 := dot2D(b.VX-a.VX, b.VY-a.VY, b.X-a.X, b.Y-a.Y)
 	coeff2 /= dot2D(b.X-a.X, b.Y-a.Y, b.X-a.X, b.Y-a.Y)
 
-	a.VX -= coeff1 * (a.X - b.X) * (2.0 * b.Mass) / (a.Mass + b.Mass)
-	a.VY -= coeff1 * (a.Y - b.Y) * (2.0 * b.Mass) / (a.Mass + b.Mass)
-	b.VX -= coeff2 * (b.X - a.X) * (2.0 * a.Mass) / (a.Mass + b.Mass)
-	b.VY -= coeff2 * (b.Y - a.Y) * (2.0 * a.Mass) / (a.Mass + b.Mass)
+	aMass, bMass := math.Abs(a.Mass), math.Abs(b.Mass)
+
+	a.VX -= coeff1 * (a.X - b.X) * (2.0 * b.Mass) / (aMass + bMass)
+	a.VY -= coeff1 * (a.Y - b.Y) * (2.0 * b.Mass) / (aMass + bMass)
+	b.VX -= coeff2 * (b.X - a.X) * (2.0 * a.Mass) / (aMass + bMass)
+	b.VY -= coeff2 * (b.Y - a.Y) * (2.0 * a.Mass) / (aMass + bMass)
 }
 
 func move(a *Particle, dt float64) {
@@ -245,12 +249,22 @@ func graphComplexity(complexity []int) {
 	}*/
 }
 
+var (
+	negative    = flag.Bool("negative", false, "simulate negative mass")
+	kcomplexity = flag.Bool("kcomplexity", false, "compute k complexity")
+)
+
 func main() {
+	flag.Parse()
+
 	particles := make(Particles, Num)
 	complexity := make([]int, Steps)
 	velocity := computeV(Temp, Mass)
 	for i := range particles {
 		particles[i].Mass = Mass
+		if *negative && i > Num/2 {
+			particles[i].Mass = -Mass
+		}
 		particles[i].Size = Size
 		particles[i].X = rand.Float64() * 0.95 * BoxX
 		particles[i].Y = rand.Float64() * 0.95 * BoxY
@@ -317,12 +331,36 @@ func main() {
 			last = current
 		}
 		out.Reset()
-		input := make(chan []byte, 1)
-		input <- in.Bytes()
-		close(input)
-		compress.BijectiveBurrowsWheelerCoder(input).MoveToFrontRunLengthCoder().AdaptiveCoder().Code(out)
-		complexity[s] = out.Len()
+		if *kcomplexity {
+			input := make(chan []byte, 1)
+			input <- in.Bytes()
+			close(input)
+			compress.BijectiveBurrowsWheelerCoder(input).MoveToFrontRunLengthCoder().AdaptiveCoder().Code(out)
+			complexity[s] = out.Len()
+		}
 	}
 	graphVelocityDistribution(particles, "velocities_end.png")
-	graphComplexity(complexity)
+	if *kcomplexity {
+		graphComplexity(complexity)
+	}
+
+	meanV, meanVPositive, meanVNegative, countPositive, countNegative :=
+		0.0, 0.0, 0.0, 0, 0
+	for i := range particles {
+		vx, vy := particles[i].VX, particles[i].VY
+		v := math.Sqrt(vx*vx + vy*vy)
+		meanV += v
+		if particles[i].Mass > 0 {
+			meanVPositive += v
+			countPositive++
+		} else {
+			meanVNegative += v
+			countNegative++
+		}
+	}
+	fmt.Printf("mean velocity=%v\n", meanV/float64(len(particles)))
+	fmt.Printf("mean positive velocity=%v\n", meanVPositive/float64(countPositive))
+	if *negative {
+		fmt.Printf("mean negative velocity=%v\n", meanVNegative/float64(countNegative))
+	}
 }
